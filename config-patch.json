@@ -1,0 +1,20 @@
+{
+  "channels": {
+    "xiaozhi": {
+      "enabled": true,
+      "url": "ws://localhost:8080/ws/openclaw",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoidXNlci0xMjMiLCJhZ2VudF9pZCI6Im1haW4iLCJkZXZpY2VfaWQiOiJlc3AzMi0wMDEiLCJpYXQiOjE3NzIyNjM3MjEsImV4cCI6MTc3MjM1MDEyMX0.9KUk7hcXakaHssDnc5mHyYVZd-x_iJMFGxobVODQWuE",
+      "reconnectInterval": 5000,
+      "heartbeatInterval": 30000,
+      "heartbeatTimeout": 10000,
+      "accounts": {
+        "default": {
+          "enabled": true,
+          "url": "ws://localhost:8080/ws/openclaw",
+          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoidXNlci0xMjMiLCJhZ2VudF9pZCI6Im1haW4iLCJkZXZpY2VfaWQiOiJlc3AzMi0wMDEiLCJpYXQiOjE3NzIyNjM3MjEsImV4cCI6MTc3MjM1MDEyMX0.9KUk7hcXakaHssDnc5mHyYVZd-x_iJMFGxobVODQWuE"
+        }
+      },
+      "defaultAccount": "default"
+    }
+  }
+}

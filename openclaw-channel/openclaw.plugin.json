@@ -1,0 +1,9 @@
+{
+  "id": "xiaozhi",
+  "channels": ["xiaozhi"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
