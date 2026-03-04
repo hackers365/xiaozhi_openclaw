@@ -1,7 +1,14 @@
-import WebSocket from "ws";
 import type { XiaozhiAccount, XiaozhiConnection, XiaozhiInboundMessage, WebSocketMessage } from "./types.js";
 import { sendPing, sendPong, sendClose } from "./send.js";
 import { generateUUID } from "./uuid.js";
+import {
+  getWebSocketCtor,
+  toTextMessage,
+  WS_READY_STATE_CONNECTING,
+  WS_READY_STATE_CLOSING,
+  WS_READY_STATE_OPEN,
+  type XiaozhiWebSocket,
+} from "./websocket.js";
 
 function readString(data: Record<string, unknown> | undefined, key: string): string {
   if (!data) {
@@ -25,7 +32,7 @@ export type XiaozhiClientOptions = {
 
 export class XiaozhiClient {
   private account: XiaozhiAccount;
-  private ws: WebSocket | null = null;
+  private ws: XiaozhiWebSocket | null = null;
   private connection: XiaozhiConnection | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private heartbeatTimeout: NodeJS.Timeout | null = null;
@@ -65,7 +72,7 @@ export class XiaozhiClient {
     this.isShuttingDown = true;
     this.clearHeartbeat();
     this.clearReconnect();
-    if (this.connection && this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this.connection && this.ws && this.ws.readyState === WS_READY_STATE_OPEN) {
       sendClose(this.connection, "Client shutdown", 1000);
     }
     if (this.ws) {
@@ -81,7 +88,10 @@ export class XiaozhiClient {
     if (this.isShuttingDown) {
       return;
     }
-    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+    if (
+      this.ws &&
+      (this.ws.readyState === WS_READY_STATE_CONNECTING || this.ws.readyState === WS_READY_STATE_OPEN)
+    ) {
       this.log?.warn(`[xiaozhi:${this.account.accountId}] skip connect: websocket already active`, {
         readyState: this.ws.readyState,
       });
@@ -91,7 +101,8 @@ export class XiaozhiClient {
     this.log?.info(`[xiaozhi:${this.account.accountId}] connecting to ${this.account.url}`);
 
     try {
-      const ws = new WebSocket(`${this.account.url}?token=${this.account.token}`);
+      const WebSocketCtor = getWebSocketCtor();
+      const ws = new WebSocketCtor(`${this.account.url}?token=${this.account.token}`);
       this.ws = ws;
 
       this.setupWebSocketHandlers(ws);
@@ -101,7 +112,7 @@ export class XiaozhiClient {
     }
   }
 
-  private setupWebSocketHandlers(ws: WebSocket): void {
+  private setupWebSocketHandlers(ws: XiaozhiWebSocket): void {
     ws.onopen = () => {
       if (ws !== this.ws) {
         this.log?.warn(`[xiaozhi:${this.account.accountId}] ignore stale onopen event`);
@@ -123,7 +134,7 @@ export class XiaozhiClient {
         this.log?.warn(`[xiaozhi:${this.account.accountId}] ignore stale onmessage event`);
         return;
       }
-      this.handleMessage(event.data.toString());
+      this.handleMessage(toTextMessage(event.data));
     };
 
     ws.onerror = (error) => {
@@ -132,6 +143,31 @@ export class XiaozhiClient {
         return;
       }
       this.log?.error(`[xiaozhi:${this.account.accountId}] websocket error`, error);
+      if (this.isShuttingDown) {
+        return;
+      }
+
+      // Some runtimes emit "error" without a following "close".
+      // Promote this to a reconnect path when the socket is not OPEN.
+      if (ws.readyState !== WS_READY_STATE_OPEN) {
+        const readyState = ws.readyState;
+        this.clearHeartbeat();
+        this.ws = null;
+        if (this.connection) {
+          this.connection.ws = null;
+        }
+        this.onDisconnect(new Error(`WebSocket error (readyState=${readyState})`));
+        this.scheduleReconnect(`onerror readyState=${readyState}`);
+
+        if (readyState === WS_READY_STATE_CONNECTING || readyState === WS_READY_STATE_CLOSING) {
+          try {
+            ws.close();
+          } catch {
+            // Ignore close errors from already-failed sockets.
+          }
+        }
+        return;
+      }
     };
 
     ws.onclose = (event) => {
@@ -287,7 +323,7 @@ export class XiaozhiClient {
   }
 
   private sendHeartbeat(): void {
-    if (!this.connection || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.connection || !this.ws || this.ws.readyState !== WS_READY_STATE_OPEN) {
       return;
     }
 
@@ -353,11 +389,11 @@ export class XiaozhiClient {
     this.connection = connection;
   }
 
-  getWebSocket(): WebSocket | null {
+  getWebSocket(): XiaozhiWebSocket | null {
     return this.ws;
   }
 
-  setWebSocket(ws: WebSocket): void {
+  setWebSocket(ws: XiaozhiWebSocket): void {
     this.ws = ws;
   }
 }

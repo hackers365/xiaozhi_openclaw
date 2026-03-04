@@ -1,4 +1,4 @@
-import type WebSocket from "ws";
+import type { XiaozhiWebSocket } from "./websocket.js";
 
 // Core types for xiaozhi channel integration
 
@@ -73,7 +73,7 @@ export type XiaozhiTokenClaims = {
 
 export type XiaozhiConnection = {
   accountId: string;
-  ws: WebSocket | null;
+  ws: XiaozhiWebSocket | null;
   claims: XiaozhiTokenClaims;
   connectedAt: number;
   lastPingAt: number;

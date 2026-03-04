@@ -1,10 +1,10 @@
-import WebSocket from "ws";
 import type { XiaozhiConnection, XiaozhiOutboundMessage } from "./types.js";
 import { generateUUID } from "./uuid.js";
+import { WS_READY_STATE_OPEN } from "./websocket.js";
 
 function sendWebSocketMessage(connection: XiaozhiConnection, message: Record<string, unknown>): { success: boolean; error?: string } {
   const ws = connection.ws;
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
+  if (!ws || ws.readyState !== WS_READY_STATE_OPEN) {
     return { success: false, error: "WebSocket is not connected" };
   }
 

@@ -1,13 +1,22 @@
 {
-  "name": "@openclaw/xiaozhi",
-  "version": "1.0.0",
-  "private": true,
+  "name": "@xiaozhi_openclaw/xiaozhi",
+  "version": "0.0.1",
   "description": "OpenClaw channel for XiaoZhi ESP32 Server WebSocket integration",
   "type": "module",
+  "main": "./index.ts",
   "openclaw": {
     "extensions": [
       "./index.ts"
     ]
+  },
+  "files": [
+    "*.ts",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {},
   "keywords": [

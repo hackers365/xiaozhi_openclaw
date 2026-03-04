@@ -1,7 +1,6 @@
 import {
   buildBaseAccountStatusSnapshot,
   buildBaseChannelStatusSummary,
-  buildChannelConfigSchema,
   DEFAULT_ACCOUNT_ID,
   deleteAccountFromConfigSection,
   getChatChannelMeta,
@@ -34,7 +33,8 @@ export const xiaozhiPlugin: ChannelPlugin<XiaozhiAccount, unknown, unknown> = {
     blockStreaming: false,
   },
   reload: { configPrefixes: ["channels.xiaozhi"] },
-  configSchema: buildChannelConfigSchema(XiaozhiConfigSchema),
+  // Keep schema flat to stay compatible with older admin UIs that cannot render wrapped schema nodes.
+  configSchema: XiaozhiConfigSchema,
   config: {
     listAccountIds: (cfg) => listXiaozhiAccountIds(cfg),
     resolveAccount: (cfg, accountId) => resolveXiaozhiAccount({ cfg, accountId }),

@@ -5,12 +5,12 @@ import {
   type OpenClawConfig,
   type ReplyPayload,
 } from "openclaw/plugin-sdk";
-import WebSocket from "ws";
 import type { XiaozhiAccount, XiaozhiConnection, XiaozhiInboundMessage } from "./types.js";
 import { clearXiaozhiConnection, setXiaozhiConnection, type XiaozhiRuntime } from "./runtime.js";
 import { XiaozhiClient } from "./client.js";
 import { sendMessageXiaozhi } from "./send.js";
 import { generateSessionId } from "./utils.js";
+import { WS_READY_STATE_OPEN } from "./websocket.js";
 
 const activeMonitorStops = new Map<string, (reason?: string) => void>();
 
@@ -214,7 +214,7 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
     sessionId?: string,
     correlationId?: string,
   ): Promise<void> {
-    if (!connection.ws || connection.ws.readyState !== WebSocket.OPEN) {
+    if (!connection.ws || connection.ws.readyState !== WS_READY_STATE_OPEN) {
       log.warn("cannot send response: not connected");
       return;
     }

@@ -1,1 +1,4 @@
 node_modules/
+.npm-cache/
+openclaw-channel/.npm-cache/
+tmp_npm_cache_*/
