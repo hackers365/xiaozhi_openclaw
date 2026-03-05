@@ -1,69 +1,43 @@
-# XiaoZhi Channel 集成完整步骤
+# XiaoZhi Channel 集成步骤（Checklist）
 
-## 前提条件
+本清单用于快速完成 `@xiaozhi_openclaw/xiaozhi` 的接入与联调。
 
-- OpenClaw 已安装
-- Node.js 18+ 已安装
-- pnpm 已安装（`npm install -g pnpm`）
+## 0. 前置检查
 
-## 步骤 1：复制 Channel 代码
+- [ ] Node.js `18+`
+- [ ] OpenClaw Gateway 可启动
+- [ ] xiaozhi-esp32-server-golang 已运行并开放 WebSocket 端点
+- [ ] 已准备 JWT token
 
-```bash
-cp -r /home/hackers365/.openclaw/workspace/xiaozhi-integration/openclaw-channel \
-  /data/code/openclaw/extensions/xiaozhi
-```
+## 1. 安装插件
 
-✅ 已完成
-
-## 步骤 2：安装依赖
+### 方案 A：使用 OpenClaw 插件命令（推荐）
 
 ```bash
-cd /data/code/openclaw
-pnpm install
+openclaw plugins install @xiaozhi_openclaw/xiaozhi
 ```
 
-注意：网络不稳定时可能需要重试几次
-
-✅ 已完成
-
-## 步骤 3：编译 OpenClaw
+如需固定版本：
 
 ```bash
-cd /data/code/openclaw
-pnpm build
+openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.1
 ```
 
-注意：如果编译失败（如 A2UI bundle 失败），可以先跳过，不影响 channel 使用
-
-## 步骤 4：生成 Token
-
-使用提供的脚本生成 JWT Token：
+安装后检查：
 
 ```bash
-cd /home/hackers365/.openclaw/workspace/xiaozhi-integration
-node generate-token.js <user_id_number> <agent_id> <endpoint_id> [expires_in]
+openclaw plugins list
 ```
 
-示例：
+### 方案 B：离线/本地源码安装（仅无法联网时）
+
 ```bash
-node generate-token.js 1 main agent_main
+cp -r /path/to/xiaozhi_openclaw/openclaw-channel ~/.openclaw/extensions/xiaozhi
 ```
 
-输出：
-```
-Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-Payload: {...}
-```
+## 2. 配置 Gateway
 
-✅ 已生成示例 Token
-
-## 步骤 5：配置 OpenClaw
-
-配置文件位置：`~/.openclaw/openclaw.json`
-
-### 方法一：手动配置
-
-在配置文件末尾添加：
+编辑 `~/.openclaw/openclaw.json`，至少包含：
 
 ```json
 {
@@ -71,7 +45,7 @@ Payload: {...}
     "xiaozhi": {
       "enabled": true,
       "url": "ws://localhost:8080/ws/openclaw",
-      "token": "你的-token",
+      "token": "your-jwt-token",
       "reconnectInterval": 5000,
       "heartbeatInterval": 30000,
       "heartbeatTimeout": 10000,
@@ -79,7 +53,7 @@ Payload: {...}
         "default": {
           "enabled": true,
           "url": "ws://localhost:8080/ws/openclaw",
-          "token": "你的-token"
+          "token": "your-jwt-token"
         }
       },
       "defaultAccount": "default"
@@ -88,209 +62,83 @@ Payload: {...}
 }
 ```
 
-### 方法二：使用脚本（需要 jq）
+## 3. 启动服务
 
-```bash
-cd /home/hackers365/.openclaw/workspace/xiaozhi-integration
-chmod +x apply-config.sh
-./apply-config.sh
-```
-
-✅ 已完成（使用 Python 自动合并）
-
-## 步骤 6：配置 xiaozhi-esp32-server-golang
-
-在 xiaozhi-esp32-server-golang 项目中配置 WebSocket 端点：
-
-```yaml
-websocket:
-  xiaozhi:
-    enabled: true
-    path: "/ws/openclaw"
-    jwt_secret: "your-secret-key"  # 必须与 token 生成时的密钥一致
-```
-
-## 步骤 7：启动服务
-
-### 7.1 启动 xiaozhi-esp32-server-golang
+1. 启动 xiaozhi-esp32-server-golang
 
 ```bash
 ./xiaozhi-server --config config.yaml
 ```
 
-### 7.2 启动 OpenClaw Gateway
+2. 启动 OpenClaw Gateway
 
 ```bash
 openclaw gateway start
 ```
 
-## 步骤 8：验证连接
+## 4. 验证连通性
 
-### 8.1 检查 xiaozhi channel 状态
+### 4.1 状态检查
 
 ```bash
 openclaw status
 ```
 
-期望看到：
-```
+期望：
+
+```text
 Channels:
   xiaozhi (default):
     Status: running
-    URL: ws://localhost:8080/ws/openclaw
 ```
 
-### 8.2 查看日志
+### 4.2 日志检查
 
 ```bash
 openclaw gateway logs --follow
 ```
 
-期望看到：
-```
+期望至少出现：
+
+```text
 [xiaozhi:default] connecting to ws://localhost:8080/ws/openclaw
 [xiaozhi:default] connected
-[xiaozhi:default] received handshake_ack
-[xiaozhi:default] connected (via gateway)
+[xiaozhi:default] received handshake_ack ...
 ```
 
-### 8.3 测试 WebSocket 连接
+### 4.3 重连检查（重要）
 
-使用 wscat 测试：
+重启对端服务后，期望出现：
+
+```text
+[xiaozhi:default] websocket error ...
+[xiaozhi:default] scheduleReconnect called ...
+[xiaozhi:default] reconnecting...
+```
+
+## 5. 常见问题
+
+### 5.1 `Cannot find module 'ws'`
 
 ```bash
-wscat -c "ws://localhost:8080/ws/openclaw?token=你的-token"
+npm install ws
 ```
 
-发送消息：
-```json
-{
-  "id": "test-001",
-  "timestamp": 1737264000000,
-  "type": "message",
-  "payload": {
-    "content": "你好"
-  }
-}
-```
+### 5.2 `Unsupported schema node. Use Raw mode.`
 
-## 故障排查
+升级到当前插件版本并重启网关；当前版本已使用扁平 schema。
 
-### 问题 1：连接失败
+### 5.3 发布 npm 包（如需）
 
-**现象：**
-```
-[xiaozhi:default] connection failed
-```
+当前包名：`@xiaozhi_openclaw/xiaozhi`。
 
-**解决方案：**
-1. 检查 xiaozhi-esp32-server-golang 是否启动
-2. 检查 URL 是否正确
-3. 检查防火墙
+在 `openclaw-channel` 目录执行：
 
 ```bash
-# 测试 WebSocket 端点
-curl -I "http://localhost:8080/ws/openclaw"
+npm publish --access public --registry=https://registry.npmjs.org
 ```
 
-### 问题 2：认证失败
+## 6. 参考
 
-**现象：**
-```
-[xiaozhi:default] auth failed
-```
-
-**解决方案：**
-1. 检查 token 是否有效
-2. 检查 JWT 密钥是否与 xiaozhi-esp32-server-golang 一致
-
-```bash
-# 解码 token
-echo "你的-token" | cut -d'.' -f2 | base64 -d | jq .
-```
-
-### 问题 3：心跳超时
-
-**现象：**
-```
-[xiaozhi:default] heartbeat timeout
-```
-
-**解决方案：**
-1. 检查网络连接
-2. 调整 heartbeatInterval 和 heartbeatTimeout
-
-## 配置说明
-
-### 基本配置
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| enabled | 是否启用 | false |
-| url | WebSocket URL | - |
-| token | JWT Token | - |
-| reconnectInterval | 重连间隔（毫秒） | 5000 |
-| heartbeatInterval | 心跳间隔（毫秒） | 30000 |
-| heartbeatTimeout | 心跳超时（毫秒） | 10000 |
-
-### 多账户配置
-
-支持配置多个 xiaozhi 设备：
-
-```json
-{
-  "channels": {
-    "xiaozhi": {
-      "accounts": {
-        "living-room": {
-          "url": "ws://192.168.1.100:8080/ws/openclaw",
-          "token": "token-for-living-room"
-        },
-        "bedroom": {
-          "url": "ws://192.168.1.101:8080/ws/openclaw",
-          "token": "token-for-bedroom"
-        }
-      },
-      "defaultAccount": "living-room"
-    }
-  }
-}
-```
-
-## 文件位置总结
-
-```
-/home/hackers365/.openclaw/workspace/xiaozhi-integration/
-├── README.md                          # 项目总览
-├── INTEGRATION_GUIDE.md              # 详细集成指南
-├── INTEGRATION_STEPS.md              # 本文件
-├── protocol/
-│   └── XIAOZHI_OPENCLAW_PROTOCOL.md # 通信协议
-├── generate-token.js                 # Token 生成脚本
-├── apply-config.sh                  # 配置应用脚本
-└── openclaw-channel/                # Channel 代码
-    └── ...
-
-/data/code/openclaw/extensions/xiaozhi/  # 已复制的 Channel
-```
-
-## 下一步
-
-1. 在 xiaozhi-esp32-server-golang 项目中实现 WebSocket 服务端
-   - 参考：`protocol/XIAOZHI_OPENCLAW_PROTOCOL.md`
-
-2. 测试端到端对话流程
-
-3. 根据需要调整配置参数
-
-## 参考文档
-
+- [详细指南](./INTEGRATION_GUIDE.md)
 - [通信协议](./protocol/XIAOZHI_OPENCLAW_PROTOCOL.md)
-- [集成指南](./INTEGRATION_GUIDE.md)
-- [OpenClaw 文档](https://docs.openclaw.ai)
-
-## 支持
-
-- OpenClaw 日志：`openclaw gateway logs --follow`
-- 配置检查：`openclaw config get`
-- 诊断：`openclaw doctor`
