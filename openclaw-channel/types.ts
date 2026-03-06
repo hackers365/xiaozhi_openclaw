@@ -24,6 +24,8 @@ export type HandshakeAckPayload = {
 export type MessagePayload = {
   content: string;
   session_id?: string;
+  // xiaozhi -> OpenClaw stream control flag:
+  // { stream: true } to enable streaming reply for this message.
   metadata?: Record<string, unknown>;
 };
 
@@ -98,6 +100,7 @@ export type XiaozhiOutboundMessage = {
   deviceId: string;
   content: string;
   sessionId?: string;
+  // For stream semantics: stream_id / seq / done / phase.
   metadata?: Record<string, unknown>;
 };
 

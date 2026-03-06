@@ -30,7 +30,7 @@ export const xiaozhiPlugin: ChannelPlugin<XiaozhiAccount, unknown, unknown> = {
   capabilities: {
     chatTypes: ["direct"],
     media: false,
-    blockStreaming: false,
+    blockStreaming: true,
   },
   reload: { configPrefixes: ["channels.xiaozhi"] },
   // Keep schema flat to stay compatible with older admin UIs that cannot render wrapped schema nodes.

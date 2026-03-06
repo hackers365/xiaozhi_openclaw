@@ -35,3 +35,4 @@ This package exposes:
 
 - If your runtime does not provide global `WebSocket`, install `ws`.
 - For scoped first publish, npm requires `--access public` (already set in `publishConfig`).
+- To pick/bind OpenClaw agent per device, send `payload.metadata.openclaw_agent_id`.

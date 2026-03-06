@@ -11,6 +11,7 @@ import { XiaozhiClient } from "./client.js";
 import { sendMessageXiaozhi } from "./send.js";
 import { generateSessionId } from "./utils.js";
 import { WS_READY_STATE_OPEN } from "./websocket.js";
+import { generateUUID } from "./uuid.js";
 
 const activeMonitorStops = new Map<string, (reason?: string) => void>();
 
@@ -39,6 +40,19 @@ export type MonitorOptions = {
   log?: MonitorLog;
 };
 
+type ResponseStreamMetadata = {
+  stream_id: string;
+  seq: number;
+  done: boolean;
+  phase: "chunk" | "final";
+  reason?: "complete" | "error";
+};
+
+type AgentSelection = {
+  agentId: string;
+  sessionKey: string;
+};
+
 export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{ stop: () => void }> {
   const { accountId, account, cfg, runtime, abortSignal, statusSink } = options;
   const log: MonitorLog = options.log ?? {
@@ -64,6 +78,7 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
   const claims = parseTokenClaims(account.token);
 
   const sessionIds = new Map<string, string>();
+  const agentBindings = new Map<string, string>();
 
   const client = new XiaozhiClient({
     account,
@@ -118,6 +133,15 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
         },
       });
 
+      const selectedAgent = resolveInboundAgentSelection({
+        route,
+        cfg,
+        message,
+        accountId,
+        agentBindings,
+        log,
+      });
+
       const rawBody = message.content?.trim() || "";
       if (!rawBody) {
         log.warn("drop empty inbound message", { messageId: message.messageId });
@@ -133,7 +157,7 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
         body: rawBody,
       });
 
-      const sessionKey = route.sessionKey;
+      const sessionKey = selectedAgent.sessionKey;
       let sessionId = message.sessionId || sessionIds.get(message.deviceId);
       if (!sessionId) {
         sessionId = generateSessionId(message.userId, message.deviceId);
@@ -162,7 +186,7 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
       });
 
       const storePath = runtime.channel.session.resolveStorePath(cfg.session?.store, {
-        agentId: route.agentId,
+        agentId: selectedAgent.agentId,
       });
       await runtime.channel.session.recordInboundSession({
         storePath,
@@ -175,34 +199,110 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
 
       const { onModelSelected, ...prefixOptions } = createReplyPrefixOptions({
         cfg,
-        agentId: route.agentId,
+        agentId: selectedAgent.agentId,
         channel: "xiaozhi",
         accountId: route.accountId,
       });
 
-      await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
-        ctx: ctxPayload,
-        cfg,
-        dispatcherOptions: {
-          ...prefixOptions,
-          deliver: async (payload: ReplyPayload) => {
-            const mediaUrls = resolveOutboundMediaUrls(payload);
-            const content = formatTextWithAttachmentLinks(payload.text, mediaUrls).trim();
-            if (!content) {
-              log.warn("skip empty outbound payload", { messageId: message.messageId });
-              return;
-            }
-            await sendResponse(message.deviceId, content, sessionId, message.messageId);
-            statusSink({ lastOutboundAt: Date.now() });
+      const streamReply = resolveStreamReplyEnabled(message.metadata);
+      const streamId = generateUUID();
+      let streamSeq = 0;
+      let chunkCount = 0;
+      const nonStreamChunks: string[] = [];
+
+      let dispatchFailed = false;
+      try {
+        await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+          ctx: ctxPayload,
+          cfg,
+          dispatcherOptions: {
+            ...prefixOptions,
+            deliver: async (payload: ReplyPayload) => {
+              const mediaUrls = resolveOutboundMediaUrls(payload);
+              const content = formatTextWithAttachmentLinks(payload.text, mediaUrls).trim();
+              if (!content) {
+                log.warn("skip empty outbound payload", { messageId: message.messageId });
+                return;
+              }
+              if (streamReply) {
+                streamSeq += 1;
+                const metadata: ResponseStreamMetadata = {
+                  stream_id: streamId,
+                  seq: streamSeq,
+                  done: false,
+                  phase: "chunk",
+                };
+                await sendResponse(
+                  message.deviceId,
+                  content,
+                  sessionId,
+                  message.messageId,
+                  {
+                    ...metadata,
+                    agent_id: selectedAgent.agentId,
+                  },
+                );
+              } else {
+                nonStreamChunks.push(content);
+              }
+              chunkCount += 1;
+            },
+            onError: (error, info) => {
+              log.error(`reply ${info.kind} failed`, error);
+            },
           },
-          onError: (error, info) => {
-            log.error(`reply ${info.kind} failed`, error);
+          replyOptions: {
+            onModelSelected,
           },
-        },
-        replyOptions: {
-          onModelSelected,
-        },
-      });
+        });
+      } catch (error) {
+        dispatchFailed = true;
+        log.error("reply dispatch failed", error);
+      } finally {
+        if (streamReply) {
+          // Stream mode: always send explicit completion marker.
+          streamSeq += 1;
+          const endMetadata: ResponseStreamMetadata = {
+            stream_id: streamId,
+            seq: streamSeq,
+            done: true,
+            phase: "final",
+            reason: dispatchFailed ? "error" : "complete",
+          };
+          if (chunkCount === 0) {
+            log.warn("reply produced no text chunk; sending final stream marker only", {
+              messageId: message.messageId,
+              dispatchFailed,
+            });
+          }
+          await sendResponse(message.deviceId, "", sessionId, message.messageId, {
+            ...endMetadata,
+            agent_id: selectedAgent.agentId,
+          });
+          statusSink({ lastOutboundAt: Date.now() });
+          return;
+        }
+
+        // Non-stream mode: preserve legacy behavior (single final response, no done marker).
+        if (chunkCount === 0) {
+          log.warn("reply produced no outbound text in non-stream mode", {
+            messageId: message.messageId,
+            dispatchFailed,
+          });
+          return;
+        }
+        const mergedContent = nonStreamChunks.join("").trim();
+        if (!mergedContent) {
+          log.warn("merged outbound content is empty in non-stream mode", {
+            messageId: message.messageId,
+          });
+          return;
+        }
+        await sendResponse(message.deviceId, mergedContent, sessionId, message.messageId, {
+          agent_id: selectedAgent.agentId,
+        });
+        statusSink({ lastOutboundAt: Date.now() });
+      }
     } catch (error) {
       log.error("failed to process message", error);
     }
@@ -213,13 +313,14 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
     content: string,
     sessionId?: string,
     correlationId?: string,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     if (!connection.ws || connection.ws.readyState !== WS_READY_STATE_OPEN) {
       log.warn("cannot send response: not connected");
       return;
     }
 
-    const result = await sendMessageXiaozhi(connection, { deviceId, content, sessionId }, correlationId);
+    const result = await sendMessageXiaozhi(connection, { deviceId, content, sessionId, metadata }, correlationId);
 
     if (!result.success) {
       log.error("failed to send response", result.error);
@@ -264,6 +365,117 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
       stopMonitor("gateway_stop");
     },
   };
+}
+
+function resolveStreamReplyEnabled(metadata?: Record<string, unknown>): boolean {
+  if (!metadata) {
+    return false;
+  }
+  return metadata.stream === true;
+}
+
+function resolveInboundAgentSelection({
+  route,
+  cfg,
+  message,
+  accountId,
+  agentBindings,
+  log,
+}: {
+  route: { agentId: string; sessionKey: string };
+  cfg: OpenClawConfig;
+  message: XiaozhiInboundMessage;
+  accountId: string;
+  agentBindings: Map<string, string>;
+  log: MonitorLog;
+}): AgentSelection {
+  const metadata = message.metadata;
+  const explicitAgentId = pickAgentIdFromMetadata(metadata);
+  const tokenAgentId = normalizeAgentId(message.agentId);
+
+  const boundAgentId = normalizeAgentId(agentBindings.get(message.deviceId));
+  let candidate = boundAgentId || explicitAgentId || tokenAgentId || route.agentId;
+
+  // Explicit openclaw_agent_id takes highest priority and updates device binding.
+  if (explicitAgentId) {
+    candidate = explicitAgentId;
+    if (boundAgentId !== explicitAgentId) {
+      agentBindings.set(message.deviceId, explicitAgentId);
+      log.info("updated bound agent from openclaw_agent_id", {
+        deviceId: message.deviceId,
+        accountId,
+        agentId: explicitAgentId,
+      });
+    }
+  } else if (!boundAgentId && tokenAgentId) {
+    // No explicit binding yet: inherit token agent once.
+    agentBindings.set(message.deviceId, tokenAgentId);
+    candidate = tokenAgentId;
+    log.info("initialized bound agent", {
+      deviceId: message.deviceId,
+      accountId,
+      agentId: tokenAgentId,
+      source: "token",
+    });
+  }
+
+  if (!looksLikeKnownAgent(candidate, cfg)) {
+    log.warn("requested agent is not configured, fallback to routed agent", {
+      requestedAgentId: candidate,
+      fallbackAgentId: route.agentId,
+      deviceId: message.deviceId,
+      accountId,
+    });
+    agentBindings.delete(message.deviceId);
+    candidate = route.agentId;
+  }
+
+  const agentId = candidate || route.agentId;
+  const sessionKey =
+    agentId === route.agentId ? route.sessionKey : `xiaozhi:${accountId}:${agentId}:${message.deviceId}`;
+
+  return {
+    agentId,
+    sessionKey,
+  };
+}
+
+function normalizeAgentId(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return /^[A-Za-z0-9_-]+$/.test(trimmed) ? trimmed : "";
+}
+
+function pickAgentIdFromMetadata(metadata?: Record<string, unknown>): string {
+  if (!metadata) {
+    return "";
+  }
+  return normalizeAgentId(metadata.openclaw_agent_id);
+}
+
+function looksLikeKnownAgent(agentId: string, cfg: OpenClawConfig): boolean {
+  const normalized = normalizeAgentId(agentId);
+  if (!normalized) {
+    return false;
+  }
+
+  const configLike = cfg as unknown as { agents?: Record<string, unknown> };
+  const agents = configLike?.agents;
+  if (!agents || typeof agents !== "object" || Array.isArray(agents)) {
+    return true;
+  }
+
+  const knownAgentIds = Object.keys(agents);
+  if (knownAgentIds.length === 0) {
+    return true;
+  }
+
+  return knownAgentIds.includes(normalized);
 }
 
 function parseTokenClaims(token: string): XiaozhiConnection["claims"] {
