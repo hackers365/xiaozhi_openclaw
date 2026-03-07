@@ -26,6 +26,7 @@ export async function sendMessageXiaozhi(
 ): Promise<{ id: string; success: boolean; error?: string }> {
   const id = generateUUID();
   const timestamp = Date.now();
+  const metadata = message.metadata || {};
 
   try {
     const payload: Record<string, unknown> = {
@@ -36,7 +37,7 @@ export async function sendMessageXiaozhi(
       payload.session_id = message.sessionId;
     }
     payload.metadata = {
-      ...(message.metadata || {}),
+      ...metadata,
       device_id: message.deviceId,
     };
 
@@ -55,10 +56,11 @@ export async function sendMessageXiaozhi(
 
     return { id, success: true };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       id,
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
     };
   }
 }

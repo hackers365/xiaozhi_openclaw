@@ -53,6 +53,26 @@ type AgentSelection = {
   sessionKey: string;
 };
 
+function suffixAfterSharedPrefix(next: string, prev: string): string {
+  if (!prev) {
+    return next;
+  }
+  if (next.startsWith(prev)) {
+    return next.slice(prev.length);
+  }
+  if (prev.startsWith(next)) {
+    return "";
+  }
+  let idx = 0;
+  while (idx < next.length && idx < prev.length && next[idx] === prev[idx]) {
+    idx += 1;
+  }
+  if (idx <= 0) {
+    return next;
+  }
+  return next.slice(idx);
+}
+
 export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{ stop: () => void }> {
   const { accountId, account, cfg, runtime, abortSignal, statusSink } = options;
   const log: MonitorLog = options.log ?? {
@@ -209,6 +229,43 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
       let streamSeq = 0;
       let chunkCount = 0;
       const nonStreamChunks: string[] = [];
+      let currentAssistantMessageIndex = -1;
+      let deliverPayloadCount = 0;
+      const partialFullTextByMessage: string[] = [];
+      let streamSendChain: Promise<void> = Promise.resolve();
+
+      const emitStreamChunk = async (content: string): Promise<void> => {
+        if (!content) {
+          return;
+        }
+        streamSeq += 1;
+        chunkCount += 1;
+        const metadata: ResponseStreamMetadata = {
+          stream_id: streamId,
+          seq: streamSeq,
+          done: false,
+          phase: "chunk",
+        };
+        await sendResponse(
+          message.deviceId,
+          content,
+          sessionId,
+          message.messageId,
+          {
+            ...metadata,
+            agent_id: selectedAgent.agentId,
+          },
+        );
+      };
+
+      const queueStreamChunk = (content: string): Promise<void> => {
+        streamSendChain = streamSendChain
+          .then(async () => {
+            await emitStreamChunk(content);
+          })
+          .catch(() => undefined);
+        return streamSendChain;
+      };
 
       let dispatchFailed = false;
       try {
@@ -225,27 +282,17 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
                 return;
               }
               if (streamReply) {
-                streamSeq += 1;
-                const metadata: ResponseStreamMetadata = {
-                  stream_id: streamId,
-                  seq: streamSeq,
-                  done: false,
-                  phase: "chunk",
-                };
-                await sendResponse(
-                  message.deviceId,
-                  content,
-                  sessionId,
-                  message.messageId,
-                  {
-                    ...metadata,
-                    agent_id: selectedAgent.agentId,
-                  },
-                );
+                const deliverIndex = deliverPayloadCount;
+                deliverPayloadCount += 1;
+                const partialFullText = partialFullTextByMessage[deliverIndex] ?? "";
+                const tail = suffixAfterSharedPrefix(content, partialFullText);
+                if (!tail) {
+                  return;
+                }
+                await queueStreamChunk(tail);
               } else {
                 nonStreamChunks.push(content);
               }
-              chunkCount += 1;
             },
             onError: (error, info) => {
               log.error(`reply ${info.kind} failed`, error);
@@ -253,12 +300,37 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
           },
           replyOptions: {
             onModelSelected,
+            onAssistantMessageStart: async () => {
+              currentAssistantMessageIndex += 1;
+              if (partialFullTextByMessage[currentAssistantMessageIndex] === undefined) {
+                partialFullTextByMessage[currentAssistantMessageIndex] = "";
+              }
+            },
+            onPartialReply: async (payload) => {
+              const fullText = payload.text || "";
+              if (!fullText.trim()) {
+                return;
+              }
+              const messageIndex = Math.max(0, currentAssistantMessageIndex);
+              const previousFullText = partialFullTextByMessage[messageIndex] ?? "";
+              const delta = suffixAfterSharedPrefix(fullText, previousFullText);
+              partialFullTextByMessage[messageIndex] = fullText;
+
+              if (!streamReply || !delta) {
+                return;
+              }
+              void queueStreamChunk(delta);
+            },
           },
         });
       } catch (error) {
         dispatchFailed = true;
         log.error("reply dispatch failed", error);
       } finally {
+        if (streamReply) {
+          await streamSendChain;
+        }
+
         if (streamReply) {
           // Stream mode: always send explicit completion marker.
           streamSeq += 1;
@@ -284,7 +356,7 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
         }
 
         // Non-stream mode: preserve legacy behavior (single final response, no done marker).
-        if (chunkCount === 0) {
+        if (nonStreamChunks.length === 0) {
           log.warn("reply produced no outbound text in non-stream mode", {
             messageId: message.messageId,
             dispatchFailed,
