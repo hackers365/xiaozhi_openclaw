@@ -64,7 +64,11 @@ export function getWebSocketCtor(): XiaozhiWebSocketCtor {
     return cachedCtor;
   }
 
-  const resolved = resolveFromGlobal() ?? resolveFromWsPackage();
+  // Prefer the ws package over the runtime-global WebSocket.
+  // Node's built-in undici WebSocket can fail with an opaque `error`
+  // before `open` on some servers, while ws is more tolerant and
+  // provides more consistent behavior for gateway-style clients.
+  const resolved = resolveFromWsPackage() ?? resolveFromGlobal();
   if (!resolved) {
     throw new Error(
       'No WebSocket implementation found. Install "ws" in the OpenClaw runtime (npm install ws) or use Node.js 20+ with global WebSocket.',

@@ -105,6 +105,7 @@ export type XiaozhiOutboundMessage = {
 };
 
 export type XiaozhiConfig = {
+  name?: string;
   enabled?: boolean;
   url: string;
   token: string;
@@ -115,6 +116,7 @@ export type XiaozhiConfig = {
 
 export type XiaozhiAccount = {
   accountId: string;
+  name?: string;
   enabled: boolean;
   configured: boolean;
   url: string;

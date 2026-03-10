@@ -1,6 +1,6 @@
 # XiaoZhi ESP32 Channel 集成指南
 
-本指南用于在 OpenClaw Gateway 中接入 XiaoZhi WebSocket Channel（当前 npm 包：`@xiaozhi_openclaw/xiaozhi@0.0.1`）。
+本指南用于在 OpenClaw Gateway 中接入 XiaoZhi WebSocket Channel（当前 npm 包：`@xiaozhi_openclaw/xiaozhi@0.0.3`）。
 
 ## 目录
 
@@ -31,13 +31,33 @@ openclaw plugins install @xiaozhi_openclaw/xiaozhi
 如需固定版本：
 
 ```bash
-openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.1
+openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.3
 ```
 
 安装后可检查：
 
 ```bash
 openclaw plugins list
+```
+
+开发阶段如果希望直接加载本地源码目录，而不是复制到 `~/.openclaw/extensions`，可使用 `--link`：
+
+```bash
+openclaw plugins install --link ./openclaw-channel
+```
+
+`--link` 只支持本地路径。代码变更后通常只需要重启 gateway，无需重新安装。
+
+安装完成后可以直接通过 CLI 新增 xiaozhi 配置：
+
+```bash
+openclaw channels add --channel xiaozhi --url ws://localhost:8080/ws/openclaw --token <jwt>
+```
+
+如需新增命名账号：
+
+```bash
+openclaw channels add --channel xiaozhi --account office --name Office --url ws://localhost:8080/ws/openclaw --token <jwt>
 ```
 
 ## 配置
@@ -156,7 +176,7 @@ openclaw gateway logs --follow
 npm install ws
 ```
 
-说明：当前插件会优先使用全局 `WebSocket`，若不存在则回退 `ws` 包。
+说明：当前插件会优先使用 `ws` 包，若运行环境里没有安装 `ws`，再回退到全局 `WebSocket`。
 
 ### 2. `websocket error` 后不重连
 
@@ -165,6 +185,8 @@ npm install ws
 - 日志中是否出现 `scheduleReconnect called`
 - `reconnectInterval` 是否过大
 - 网关进程是否仍存活
+
+如果日志栈里出现 `undici`，说明运行时正在使用 Node 自带的全局 `WebSocket`。部分服务端在这个实现下会表现为 `onerror readyState=0`，但改用 `ws` 后可正常握手。当前仓库版本已调整为优先使用 `ws`，发布并升级插件后再重试。
 
 ### 3. `Unsupported schema node. Use Raw mode.`
 

@@ -1,6 +1,11 @@
 export const XiaozhiConfigSchema = {
   type: "object",
   properties: {
+    name: {
+      type: "string",
+      title: "Name",
+      description: "Optional display name for the default xiaozhi account",
+    },
     enabled: {
       type: "boolean",
       title: "Enabled",
@@ -46,6 +51,10 @@ export const XiaozhiConfigSchema = {
 export const XiaozhiAccountSchema = {
   type: "object",
   properties: {
+    name: {
+      type: "string",
+      title: "Name",
+    },
     enabled: {
       type: "boolean",
       title: "Enabled",

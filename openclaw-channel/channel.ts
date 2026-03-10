@@ -1,9 +1,12 @@
 import {
+  applyAccountNameToChannelSection,
   buildBaseAccountStatusSnapshot,
   buildBaseChannelStatusSummary,
   DEFAULT_ACCOUNT_ID,
   deleteAccountFromConfigSection,
   getChatChannelMeta,
+  migrateBaseNameToDefaultAccount,
+  normalizeAccountId,
   setAccountEnabledInConfigSection,
   type ChannelPlugin,
 } from "openclaw/plugin-sdk";
@@ -19,6 +22,64 @@ import { getXiaozhiRuntime, resolveXiaozhiConnection } from "./runtime.js";
 import { sendMessageXiaozhi } from "./send.js";
 
 const meta = getChatChannelMeta("xiaozhi");
+
+function hasConfiguredXiaozhiAccounts(cfg: { channels?: { xiaozhi?: { accounts?: Record<string, unknown> } } }): boolean {
+  const accounts = cfg.channels?.xiaozhi?.accounts;
+  return Boolean(accounts && Object.keys(accounts).length > 0);
+}
+
+function applyXiaozhiSetupConfig({
+  cfg,
+  accountId,
+  url,
+  token,
+}: {
+  cfg: Record<string, any>;
+  accountId: string;
+  url: string;
+  token: string;
+}) {
+  const useAccounts = accountId !== DEFAULT_ACCOUNT_ID || hasConfiguredXiaozhiAccounts(cfg);
+  const channel = cfg.channels?.xiaozhi ?? {};
+
+  if (!useAccounts) {
+    return {
+      ...cfg,
+      channels: {
+        ...cfg.channels,
+        xiaozhi: {
+          ...channel,
+          enabled: true,
+          url,
+          token,
+        },
+      },
+    };
+  }
+
+  const accounts = channel.accounts ?? {};
+  const existingAccount = accounts[accountId] ?? {};
+
+  return {
+    ...cfg,
+    channels: {
+      ...cfg.channels,
+      xiaozhi: {
+        ...channel,
+        enabled: channel.enabled ?? true,
+        accounts: {
+          ...accounts,
+          [accountId]: {
+            ...existingAccount,
+            enabled: true,
+            url,
+            token,
+          },
+        },
+      },
+    },
+  };
+}
 
 export const xiaozhiPlugin: ChannelPlugin<XiaozhiAccount, unknown, unknown> = {
   id: "xiaozhi",
@@ -57,11 +118,52 @@ export const xiaozhiPlugin: ChannelPlugin<XiaozhiAccount, unknown, unknown> = {
     isConfigured: (account) => account.configured,
     describeAccount: (account) => ({
       accountId: account.accountId,
-      name: `XiaoZhi ${account.accountId}`,
+      name: account.name ?? `XiaoZhi ${account.accountId}`,
       enabled: account.enabled,
       configured: account.configured,
       url: account.url,
     }),
+  },
+  setup: {
+    resolveAccountId: ({ accountId }) => normalizeAccountId(accountId),
+    applyAccountName: ({ cfg, accountId, name }) =>
+      applyAccountNameToChannelSection({
+        cfg,
+        channelKey: "xiaozhi",
+        accountId,
+        name,
+      }),
+    validateInput: ({ input }) => {
+      if (!input.url?.trim()) {
+        return "XiaoZhi requires --url.";
+      }
+      if (!input.token?.trim()) {
+        return "XiaoZhi requires --token.";
+      }
+      return null;
+    },
+    applyAccountConfig: ({ cfg, accountId, input }) => {
+      const namedConfig = applyAccountNameToChannelSection({
+        cfg,
+        channelKey: "xiaozhi",
+        accountId,
+        name: input.name,
+      });
+      const next =
+        accountId !== DEFAULT_ACCOUNT_ID
+          ? migrateBaseNameToDefaultAccount({
+              cfg: namedConfig,
+              channelKey: "xiaozhi",
+            })
+          : namedConfig;
+
+      return applyXiaozhiSetupConfig({
+        cfg: next,
+        accountId,
+        url: input.url!.trim(),
+        token: input.token!.trim(),
+      });
+    },
   },
   messaging: {
     normalizeTarget: (raw) => raw?.trim() || null,

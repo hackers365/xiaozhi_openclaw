@@ -2,12 +2,25 @@ import type { CoreConfig } from "openclaw/config";
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk";
 import type { XiaozhiAccount, XiaozhiConfig } from "./types.js";
 
-export function listXiaozhiAccountIds(cfg: CoreConfig): string[] {
+type XiaozhiChannelConfig = XiaozhiConfig & {
+  accounts?: Record<string, XiaozhiConfig | undefined>;
+  defaultAccount?: string;
+};
+
+function listConfiguredXiaozhiAccountIds(cfg: CoreConfig): string[] {
   const accounts = cfg.channels?.xiaozhi?.accounts;
-  if (!accounts || Object.keys(accounts).length === 0) {
+  if (!accounts || typeof accounts !== "object") {
+    return [];
+  }
+  return Object.keys(accounts).filter(Boolean).toSorted((a, b) => a.localeCompare(b));
+}
+
+export function listXiaozhiAccountIds(cfg: CoreConfig): string[] {
+  const ids = listConfiguredXiaozhiAccountIds(cfg);
+  if (ids.length === 0) {
     return [DEFAULT_ACCOUNT_ID];
   }
-  return Object.keys(accounts);
+  return ids;
 }
 
 export function resolveDefaultXiaozhiAccountId(cfg: CoreConfig): string {
@@ -16,7 +29,25 @@ export function resolveDefaultXiaozhiAccountId(cfg: CoreConfig): string {
   if (defaultAccountId && ids.includes(defaultAccountId)) {
     return defaultAccountId;
   }
+  if (ids.includes(DEFAULT_ACCOUNT_ID)) {
+    return DEFAULT_ACCOUNT_ID;
+  }
   return ids[0] ?? DEFAULT_ACCOUNT_ID;
+}
+
+function resolveXiaozhiAccountConfig(cfg: CoreConfig, accountId: string): XiaozhiConfig | undefined {
+  return cfg.channels?.xiaozhi?.accounts?.[accountId];
+}
+
+function mergeXiaozhiAccountConfig(cfg: CoreConfig, accountId: string): XiaozhiChannelConfig {
+  const channel = (cfg.channels?.xiaozhi ?? {}) as XiaozhiChannelConfig;
+  const account = resolveXiaozhiAccountConfig(cfg, accountId) ?? {};
+  const { accounts: _ignoredAccounts, defaultAccount: _ignoredDefaultAccount, ...base } = channel;
+
+  return {
+    ...base,
+    ...account,
+  };
 }
 
 export function resolveXiaozhiAccount({
@@ -27,19 +58,19 @@ export function resolveXiaozhiAccount({
   accountId?: string;
 }): XiaozhiAccount {
   const resolvedAccountId = accountId ?? resolveDefaultXiaozhiAccountId(cfg);
-  const config = cfg.channels?.xiaozhi?.accounts?.[resolvedAccountId];
-  const topLevelConfig = cfg.channels?.xiaozhi;
+  const merged = mergeXiaozhiAccountConfig(cfg, resolvedAccountId);
 
-  const url = config?.url ?? topLevelConfig?.url ?? "";
-  const token = config?.token ?? topLevelConfig?.token ?? "";
-  const reconnectInterval = config?.reconnectInterval ?? topLevelConfig?.reconnectInterval ?? 5000;
-  const heartbeatInterval = config?.heartbeatInterval ?? topLevelConfig?.heartbeatInterval ?? 30000;
-  const heartbeatTimeout = config?.heartbeatTimeout ?? topLevelConfig?.heartbeatTimeout ?? 10000;
-  const enabled = config?.enabled ?? topLevelConfig?.enabled ?? false;
+  const url = merged.url?.trim() ?? "";
+  const token = merged.token?.trim() ?? "";
+  const reconnectInterval = merged.reconnectInterval ?? 5000;
+  const heartbeatInterval = merged.heartbeatInterval ?? 30000;
+  const heartbeatTimeout = merged.heartbeatTimeout ?? 10000;
+  const enabled = merged.enabled ?? false;
   const configured = url.length > 0 && token.length > 0;
 
   return {
     accountId: resolvedAccountId,
+    name: merged.name?.trim() || undefined,
     enabled,
     configured,
     url,
