@@ -1,6 +1,6 @@
 # XiaoZhi ESP32 Channel 集成指南
 
-本指南用于在 OpenClaw Gateway 中接入 XiaoZhi WebSocket Channel（当前 npm 包：`@xiaozhi_openclaw/xiaozhi@0.0.3`）。
+本指南用于在 OpenClaw Gateway 中接入 XiaoZhi WebSocket Channel（当前 npm 包：`@xiaozhi_openclaw/xiaozhi@0.0.4`）。
 
 ## 目录
 
@@ -31,8 +31,10 @@ openclaw plugins install @xiaozhi_openclaw/xiaozhi
 如需固定版本：
 
 ```bash
-openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.3
+openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.4
 ```
+
+兼容性说明：OpenClaw `2026.3.11+` 请使用 `@xiaozhi_openclaw/xiaozhi@0.0.4` 或更高版本。
 
 安装后可检查：
 

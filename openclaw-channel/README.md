@@ -11,8 +11,10 @@ npm install @xiaozhi_openclaw/xiaozhi
 With OpenClaw CLI:
 
 ```bash
-openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.3
+openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.4
 ```
+
+Compatibility note: use `0.0.4` or later with OpenClaw `2026.3.11+`.
 
 Development link mode:
 

@@ -20,7 +20,7 @@ openclaw plugins install @xiaozhi_openclaw/xiaozhi
 如需固定版本：
 
 ```bash
-openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.1
+openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.4
 ```
 
 安装后检查：

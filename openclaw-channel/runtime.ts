@@ -1,4 +1,4 @@
-import type { PluginRuntime } from "openclaw/plugin-sdk";
+import type { PluginRuntime } from "openclaw/plugin-sdk/core";
 import type { XiaozhiConnection } from "./types.js";
 
 export type XiaozhiRuntime = PluginRuntime;

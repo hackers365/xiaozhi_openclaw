@@ -1,5 +1,5 @@
 import type { CoreConfig } from "openclaw/config";
-import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk";
+import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/compat";
 import type { XiaozhiAccount, XiaozhiConfig } from "./types.js";
 
 type XiaozhiChannelConfig = XiaozhiConfig & {

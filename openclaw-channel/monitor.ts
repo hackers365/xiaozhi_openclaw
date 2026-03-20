@@ -4,7 +4,7 @@ import {
   resolveOutboundMediaUrls,
   type OpenClawConfig,
   type ReplyPayload,
-} from "openclaw/plugin-sdk";
+} from "openclaw/plugin-sdk/compat";
 import type { XiaozhiAccount, XiaozhiConnection, XiaozhiInboundMessage } from "./types.js";
 import { clearXiaozhiConnection, setXiaozhiConnection, type XiaozhiRuntime } from "./runtime.js";
 import { XiaozhiClient } from "./client.js";
