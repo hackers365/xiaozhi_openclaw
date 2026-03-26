@@ -1,13 +1,12 @@
+import type { OpenClawConfig, ReplyPayload } from "openclaw/plugin-sdk/compat";
+import type { XiaozhiAccount, XiaozhiConnection, XiaozhiInboundMessage } from "./types.js";
+import { clearXiaozhiConnection, setXiaozhiConnection, type XiaozhiRuntime } from "./runtime.js";
+import { XiaozhiClient } from "./client.js";
 import {
   createReplyPrefixOptions,
   formatTextWithAttachmentLinks,
   resolveOutboundMediaUrls,
-  type OpenClawConfig,
-  type ReplyPayload,
-} from "openclaw/plugin-sdk/compat";
-import type { XiaozhiAccount, XiaozhiConnection, XiaozhiInboundMessage } from "./types.js";
-import { clearXiaozhiConnection, setXiaozhiConnection, type XiaozhiRuntime } from "./runtime.js";
-import { XiaozhiClient } from "./client.js";
+} from "./sdk-shim.js";
 import { sendMessageXiaozhi } from "./send.js";
 import { generateSessionId } from "./utils.js";
 import { WS_READY_STATE_OPEN } from "./websocket.js";

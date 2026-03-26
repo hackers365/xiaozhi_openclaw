@@ -1,14 +1,14 @@
 import type { ChannelPlugin, OpenClawPluginApi } from "openclaw/plugin-sdk/core";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
 import { xiaozhiPlugin } from "./channel.js";
 import { setXiaozhiRuntime } from "./runtime.js";
+import { emptyPluginConfigSchema } from "./sdk-shim.js";
 
 const plugin = {
   id: "xiaozhi",
   name: "XiaoZhi ESP32",
   description: "XiaoZhi ESP32 Server WebSocket channel integration",
   configSchema: emptyPluginConfigSchema(),
-  version: "1.0.0",
+  version: "0.0.5",
   register(api: OpenClawPluginApi) {
     setXiaozhiRuntime(api.runtime);
 

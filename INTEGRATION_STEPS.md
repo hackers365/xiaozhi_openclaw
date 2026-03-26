@@ -20,13 +20,14 @@ openclaw plugins install @xiaozhi_openclaw/xiaozhi
 如需固定版本：
 
 ```bash
-openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.4
+openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.5
 ```
 
 安装后检查：
 
 ```bash
 openclaw plugins list
+openclaw channels capabilities --channel xiaozhi
 ```
 
 ### 方案 B：离线/本地源码安装（仅无法联网时）
@@ -35,9 +36,36 @@ openclaw plugins list
 cp -r /path/to/xiaozhi_openclaw/openclaw-channel ~/.openclaw/extensions/xiaozhi
 ```
 
+如果 `~/.openclaw/extensions/xiaozhi` 已存在，先删除旧目录再安装，避免 `plugin already exists`。
+
+```bash
+openclaw plugins uninstall xiaozhi
+rm -rf ~/.openclaw/extensions/xiaozhi
+```
+
+如果 `clawhub` 返回 `429`，改用：
+
+```bash
+npx -y @xiaozhi_openclaw/xiaozhi@0.0.5 install
+```
+
+如果安装后执行 `openclaw channels capabilities --channel xiaozhi` 仍然失败，先执行：
+
+```bash
+node /path/to/openclaw-channel/cli.mjs doctor
+```
+
 ## 2. 配置 Gateway
 
-编辑 `~/.openclaw/openclaw.json`，至少包含：
+优先使用 OpenClaw 官方命令：
+
+```bash
+openclaw config set channels.xiaozhi.enabled true --strict-json
+openclaw config set channels.xiaozhi.url "ws://localhost:8080/ws/openclaw"
+openclaw config set channels.xiaozhi.token "your-jwt-token"
+```
+
+或者直接编辑 `~/.openclaw/openclaw.json`，至少包含：
 
 ```json
 {
@@ -128,7 +156,40 @@ npm install ws
 
 升级到当前插件版本并重启网关；当前版本已使用扁平 schema。
 
-### 5.3 发布 npm 包（如需）
+### 5.3 `Cannot find module 'openclaw/plugin-sdk/core'`
+
+升级到 `0.0.5+` 后重试；当前版本已经移除安装目录中的运行期 SDK 裸导入。
+
+### 5.4 `ClawHub ... 429: Rate limit exceeded`
+
+改用：
+
+```bash
+npx -y @xiaozhi_openclaw/xiaozhi@0.0.5 install
+```
+
+### 5.5 `Unknown channel: xiaozhi`
+
+先检查：
+
+```bash
+openclaw plugins list
+openclaw plugins doctor
+openclaw channels capabilities --channel xiaozhi
+node /path/to/openclaw-channel/cli.mjs doctor
+```
+
+如果 `plugins list` 能看到 `xiaozhi`，并且 `channels capabilities --channel xiaozhi` 也成功，但 `openclaw channels add --channel xiaozhi ...` 仍然报错，直接改用：
+
+```bash
+openclaw config set channels.xiaozhi.enabled true --strict-json
+openclaw config set channels.xiaozhi.url "ws://localhost:8080/ws/openclaw"
+openclaw config set channels.xiaozhi.token "<jwt>"
+```
+
+这是因为 OpenClaw `2026.3.23-1` 的 `channels add` 子命令不会为外部 channel 预加载 plugin registry。
+
+### 5.6 发布 npm 包（如需）
 
 当前包名：`@xiaozhi_openclaw/xiaozhi`。
 

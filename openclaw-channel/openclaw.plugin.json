@@ -1,5 +1,8 @@
 {
   "id": "xiaozhi",
+  "name": "XiaoZhi ESP32",
+  "description": "OpenClaw channel plugin for XiaoZhi ESP32 Server WebSocket integration",
+  "version": "0.0.5",
   "channels": ["xiaozhi"],
   "configSchema": {
     "type": "object",

@@ -1,3 +1,13 @@
+import type { ChannelPlugin } from "openclaw/plugin-sdk/compat";
+import {
+  listXiaozhiAccountIds,
+  resolveDefaultXiaozhiAccountId,
+  resolveXiaozhiAccount,
+  type XiaozhiAccount,
+} from "./accounts.js";
+import { XiaozhiConfigSchema } from "./config-schema.js";
+import { monitorXiaozhiProvider } from "./monitor.js";
+import { getXiaozhiRuntime, resolveXiaozhiConnection } from "./runtime.js";
 import {
   applyAccountNameToChannelSection,
   buildBaseAccountStatusSnapshot,
@@ -8,20 +18,20 @@ import {
   migrateBaseNameToDefaultAccount,
   normalizeAccountId,
   setAccountEnabledInConfigSection,
-  type ChannelPlugin,
-} from "openclaw/plugin-sdk/compat";
-import {
-  listXiaozhiAccountIds,
-  resolveDefaultXiaozhiAccountId,
-  resolveXiaozhiAccount,
-  type XiaozhiAccount,
-} from "./accounts.js";
-import { XiaozhiConfigSchema } from "./config-schema.js";
-import { monitorXiaozhiProvider } from "./monitor.js";
-import { getXiaozhiRuntime, resolveXiaozhiConnection } from "./runtime.js";
+} from "./sdk-shim.js";
 import { sendMessageXiaozhi } from "./send.js";
 
-const meta = getChatChannelMeta("xiaozhi");
+const meta = {
+  id: "xiaozhi",
+  label: "XiaoZhi",
+  selectionLabel: "XiaoZhi ESP32",
+  detailLabel: "XiaoZhi ESP32",
+  docsPath: "/channels/xiaozhi",
+  docsLabel: "xiaozhi",
+  blurb: "WebSocket bridge for XiaoZhi ESP32 devices and OpenClaw Gateway.",
+  aliases: ["xiaozhi-esp32", "xz"],
+  ...(getChatChannelMeta("xiaozhi") ?? {}),
+};
 
 function hasConfiguredXiaozhiAccounts(cfg: { channels?: { xiaozhi?: { accounts?: Record<string, unknown> } } }): boolean {
   const accounts = cfg.channels?.xiaozhi?.accounts;
@@ -83,11 +93,7 @@ function applyXiaozhiSetupConfig({
 
 export const xiaozhiPlugin: ChannelPlugin<XiaozhiAccount, unknown, unknown> = {
   id: "xiaozhi",
-  meta: {
-    ...meta,
-    name: "XiaoZhi ESP32",
-    description: "XiaoZhi ESP32 Server WebSocket channel",
-  },
+  meta,
   capabilities: {
     chatTypes: ["direct"],
     media: false,
