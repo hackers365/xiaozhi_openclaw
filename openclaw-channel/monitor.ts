@@ -43,7 +43,8 @@ type ResponseStreamMetadata = {
   stream_id: string;
   seq: number;
   done: boolean;
-  phase: "chunk" | "final";
+  phase: "chunk" | "snapshot" | "final";
+  content_type?: "delta" | "snapshot";
   reason?: "complete" | "error";
 };
 
@@ -52,24 +53,89 @@ type AgentSelection = {
   sessionKey: string;
 };
 
-function suffixAfterSharedPrefix(next: string, prev: string): string {
-  if (!prev) {
-    return next;
+type StreamMessageState = {
+  observedText: string;
+  emittedText: string;
+};
+
+type StreamTextUpdate = {
+  phase: "chunk" | "snapshot";
+  content: string;
+};
+
+function normalizeComparableText(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function classifyStreamTextUpdate(next: string, emitted: string): StreamTextUpdate | null {
+  if (!next) {
+    return null;
   }
-  if (next.startsWith(prev)) {
-    return next.slice(prev.length);
+  if (!emitted) {
+    return { phase: "chunk", content: next };
   }
-  if (prev.startsWith(next)) {
-    return "";
+  if (next === emitted) {
+    return null;
   }
-  let idx = 0;
-  while (idx < next.length && idx < prev.length && next[idx] === prev[idx]) {
-    idx += 1;
+  if (next.startsWith(emitted)) {
+    const delta = next.slice(emitted.length);
+    return delta ? { phase: "chunk", content: delta } : null;
   }
-  if (idx <= 0) {
-    return next;
+  const normalizedNext = normalizeComparableText(next);
+  const normalizedEmitted = normalizeComparableText(emitted);
+  if (normalizedNext && normalizedNext === normalizedEmitted) {
+    return null;
   }
-  return next.slice(idx);
+  return { phase: "snapshot", content: next };
+}
+
+function buildStreamStateSearchOrder(size: number, hintIndex: number): number[] {
+  if (size <= 0) {
+    return [];
+  }
+  const start = Math.max(0, Math.min(hintIndex, size - 1));
+  const order: number[] = [];
+  for (let index = start; index < size; index += 1) {
+    order.push(index);
+  }
+  for (let index = 0; index < start; index += 1) {
+    order.push(index);
+  }
+  return order;
+}
+
+function resolveStreamMessageStateIndex(content: string, states: StreamMessageState[], hintIndex: number): number {
+  const normalizedContent = normalizeComparableText(content);
+  if (!normalizedContent || states.length === 0) {
+    return hintIndex;
+  }
+
+  const searchOrder = buildStreamStateSearchOrder(states.length, hintIndex);
+  const exactMatch = searchOrder.find((index) => {
+    const state = states[index];
+    return (
+      normalizedContent === normalizeComparableText(state.observedText) ||
+      normalizedContent === normalizeComparableText(state.emittedText)
+    );
+  });
+  if (exactMatch !== undefined) {
+    return exactMatch;
+  }
+
+  const overlappingMatch = searchOrder.find((index) => {
+    const state = states[index];
+    const comparableStates = [state.observedText, state.emittedText]
+      .map((text) => normalizeComparableText(text))
+      .filter(Boolean);
+    return comparableStates.some(
+      (candidate) => normalizedContent.startsWith(candidate) || candidate.startsWith(normalizedContent),
+    );
+  });
+  if (overlappingMatch !== undefined) {
+    return overlappingMatch;
+  }
+
+  return hintIndex;
 }
 
 export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{ stop: () => void }> {
@@ -230,10 +296,20 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
       const nonStreamChunks: string[] = [];
       let currentAssistantMessageIndex = -1;
       let deliverPayloadCount = 0;
-      const partialFullTextByMessage: string[] = [];
+      const streamMessageStates: StreamMessageState[] = [];
       let streamSendChain: Promise<void> = Promise.resolve();
 
-      const emitStreamChunk = async (content: string): Promise<void> => {
+      const ensureStreamMessageState = (messageIndex: number): StreamMessageState => {
+        while (streamMessageStates.length <= messageIndex) {
+          streamMessageStates.push({
+            observedText: "",
+            emittedText: "",
+          });
+        }
+        return streamMessageStates[messageIndex];
+      };
+
+      const emitStreamUpdate = async (phase: "chunk" | "snapshot", content: string): Promise<void> => {
         if (!content) {
           return;
         }
@@ -243,7 +319,8 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
           stream_id: streamId,
           seq: streamSeq,
           done: false,
-          phase: "chunk",
+          phase,
+          content_type: phase === "snapshot" ? "snapshot" : "delta",
         };
         await sendResponse(
           message.deviceId,
@@ -257,13 +334,34 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
         );
       };
 
-      const queueStreamChunk = (content: string): Promise<void> => {
+      const queueStreamUpdate = (phase: "chunk" | "snapshot", content: string): Promise<void> => {
         streamSendChain = streamSendChain
           .then(async () => {
-            await emitStreamChunk(content);
+            await emitStreamUpdate(phase, content);
           })
           .catch(() => undefined);
         return streamSendChain;
+      };
+
+      const queueStreamTextUpdate = (messageIndex: number, nextText: string, source: "partial" | "deliver"): void => {
+        const state = ensureStreamMessageState(messageIndex);
+        state.observedText = nextText;
+
+        const update = classifyStreamTextUpdate(nextText, state.emittedText);
+        if (!update) {
+          return;
+        }
+
+        if (update.phase === "snapshot") {
+          log.warn("stream reply rewrote prior text; emitting snapshot frame", {
+            messageId: message.messageId,
+            messageIndex,
+            source,
+          });
+        }
+
+        state.emittedText = nextText;
+        void queueStreamUpdate(update.phase, update.content);
       };
 
       let dispatchFailed = false;
@@ -283,12 +381,8 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
               if (streamReply) {
                 const deliverIndex = deliverPayloadCount;
                 deliverPayloadCount += 1;
-                const partialFullText = partialFullTextByMessage[deliverIndex] ?? "";
-                const tail = suffixAfterSharedPrefix(content, partialFullText);
-                if (!tail) {
-                  return;
-                }
-                await queueStreamChunk(tail);
+                const stateIndex = resolveStreamMessageStateIndex(content, streamMessageStates, deliverIndex);
+                queueStreamTextUpdate(stateIndex, content, "deliver");
               } else {
                 nonStreamChunks.push(content);
               }
@@ -301,9 +395,7 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
             onModelSelected,
             onAssistantMessageStart: async () => {
               currentAssistantMessageIndex += 1;
-              if (partialFullTextByMessage[currentAssistantMessageIndex] === undefined) {
-                partialFullTextByMessage[currentAssistantMessageIndex] = "";
-              }
+              ensureStreamMessageState(Math.max(0, currentAssistantMessageIndex));
             },
             onPartialReply: async (payload) => {
               const fullText = payload.text || "";
@@ -311,14 +403,10 @@ export async function monitorXiaozhiProvider(options: MonitorOptions): Promise<{
                 return;
               }
               const messageIndex = Math.max(0, currentAssistantMessageIndex);
-              const previousFullText = partialFullTextByMessage[messageIndex] ?? "";
-              const delta = suffixAfterSharedPrefix(fullText, previousFullText);
-              partialFullTextByMessage[messageIndex] = fullText;
-
-              if (!streamReply || !delta) {
+              if (!streamReply) {
                 return;
               }
-              void queueStreamChunk(delta);
+              queueStreamTextUpdate(messageIndex, fullText, "partial");
             },
           },
         });

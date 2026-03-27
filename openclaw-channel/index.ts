@@ -8,7 +8,7 @@ const plugin = {
   name: "XiaoZhi ESP32",
   description: "XiaoZhi ESP32 Server WebSocket channel integration",
   configSchema: emptyPluginConfigSchema(),
-  version: "0.0.5",
+  version: "0.0.6",
   register(api: OpenClawPluginApi) {
     setXiaozhiRuntime(api.runtime);
 

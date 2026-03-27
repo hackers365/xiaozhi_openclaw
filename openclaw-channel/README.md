@@ -11,16 +11,16 @@ npm install @xiaozhi_openclaw/xiaozhi
 With OpenClaw CLI:
 
 ```bash
-openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.5
+openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.6
 ```
 
 With `npx` installer mode:
 
 ```bash
-npx -y @xiaozhi_openclaw/xiaozhi@0.0.5 install
+npx -y @xiaozhi_openclaw/xiaozhi@0.0.6 install
 ```
 
-Compatibility note: use `0.0.5` with OpenClaw `2026.3.8+`.
+Compatibility note: use `0.0.6` with OpenClaw `2026.3.8+`.
 
 If a previous manual copy already exists at `~/.openclaw/extensions/xiaozhi`, remove it before reinstalling:
 

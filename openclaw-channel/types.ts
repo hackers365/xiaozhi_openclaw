@@ -100,7 +100,7 @@ export type XiaozhiOutboundMessage = {
   deviceId: string;
   content: string;
   sessionId?: string;
-  // For stream semantics: stream_id / seq / done / phase.
+  // For stream semantics: stream_id / seq / done / phase(chunk|snapshot|final).
   metadata?: Record<string, unknown>;
 };
 

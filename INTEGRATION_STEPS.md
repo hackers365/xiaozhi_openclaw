@@ -20,7 +20,7 @@ openclaw plugins install @xiaozhi_openclaw/xiaozhi
 如需固定版本：
 
 ```bash
-openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.5
+openclaw plugins install @xiaozhi_openclaw/xiaozhi@0.0.6
 ```
 
 安装后检查：
@@ -46,7 +46,7 @@ rm -rf ~/.openclaw/extensions/xiaozhi
 如果 `clawhub` 返回 `429`，改用：
 
 ```bash
-npx -y @xiaozhi_openclaw/xiaozhi@0.0.5 install
+npx -y @xiaozhi_openclaw/xiaozhi@0.0.6 install
 ```
 
 如果安装后执行 `openclaw channels capabilities --channel xiaozhi` 仍然失败，先执行：
@@ -165,7 +165,7 @@ npm install ws
 改用：
 
 ```bash
-npx -y @xiaozhi_openclaw/xiaozhi@0.0.5 install
+npx -y @xiaozhi_openclaw/xiaozhi@0.0.6 install
 ```
 
 ### 5.5 `Unknown channel: xiaozhi`

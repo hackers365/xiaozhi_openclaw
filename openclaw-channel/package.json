@@ -1,6 +1,6 @@
 {
   "name": "@xiaozhi_openclaw/xiaozhi",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "OpenClaw channel for XiaoZhi ESP32 Server WebSocket integration",
   "type": "module",
   "main": "./index.ts",
